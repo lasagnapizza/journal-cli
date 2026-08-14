@@ -171,11 +171,10 @@ func (m *appModel) timelineLines() ([]string, []int) {
 	var lines []string
 	starts := make([]int, len(d.Entries))
 	for i, e := range d.Entries {
+		// entries sit on adjacent lines; only a gap divider earns whitespace
 		if i > 0 {
 			if g := gapLabel(time.Duration(e.At-d.Entries[i-1].At) * time.Millisecond); g != "" {
 				lines = append(lines, "", m.gapDivider(g), "")
-			} else {
-				lines = append(lines, "")
 			}
 		}
 		starts[i] = len(lines)
