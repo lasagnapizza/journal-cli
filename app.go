@@ -260,6 +260,7 @@ func (m *appModel) logEntry() {
 	at := newAt(m.entries)
 	m.entries = append(m.entries, Entry{Text: text, At: at})
 	m.persist()
+	syncLogged(at, text)
 	m.ta.Reset()
 	m.sel = -1
 	m.now = at
@@ -296,6 +297,7 @@ func (m *appModel) finishEdit(save bool) {
 			}
 		}
 		m.persist()
+		syncEdited(m.editingAt, text)
 	}
 	m.editing = false
 	m.editingAt = 0
@@ -323,6 +325,7 @@ func (m *appModel) deleteSelected() {
 	}
 	m.entries = kept
 	m.persist()
+	syncDeleted(at)
 	m.sel = -1
 	// rebuildPages already falls back to today when the shown day's last
 	// entry vanished; when the day survives, keep the scroll where it was
@@ -632,6 +635,7 @@ var version = "dev"
 
 func main() {
 	use24h := os.Getenv("JOURNAL_24H") == "1"
+	cmd := ""
 	for _, a := range os.Args[1:] {
 		switch a {
 		case "-24h", "--24h":
@@ -642,13 +646,39 @@ func main() {
 		case "-h", "--help":
 			fmt.Println("journal — interstitial journaling in the terminal")
 			fmt.Println()
-			fmt.Println("usage: journal [-24h]")
+			fmt.Println("usage: journal [-24h] [login|logout|sync]")
 			fmt.Println()
+			fmt.Println("  login          sign in to the journal web app's Supabase and sync")
+			fmt.Println("  logout         sign out (local entries stay)")
+			fmt.Println("  sync           reconcile with the cloud and exit")
 			fmt.Println("  -24h           24-hour clock (or JOURNAL_24H=1)")
 			fmt.Println("  -v, --version  print version")
 			fmt.Println("  -h, --help     this help")
 			return
+		case "login", "logout", "sync":
+			cmd = a
 		}
+	}
+	if cmd != "" {
+		// same exclusive lock as the TUI — these rewrite the day files too
+		if err := lockStore(); err != nil {
+			fmt.Fprintln(os.Stderr, "journal:", err)
+			os.Exit(1)
+		}
+		var err error
+		switch cmd {
+		case "login":
+			err = cmdLogin(use24h)
+		case "logout":
+			err = cmdLogout()
+		case "sync":
+			err = cmdSync(use24h)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "journal:", err)
+			os.Exit(1)
+		}
+		return
 	}
 	if err := lockStore(); err != nil {
 		fmt.Fprintln(os.Stderr, "journal:", err)
@@ -659,6 +689,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "journal:", err)
 		os.Exit(1)
 	}
+	// signed in → pull the account's entries before first paint; any network
+	// failure falls back to the local files and the queue catches up later
+	entries, _ = syncStartup(entries, use24h)
 	p := tea.NewProgram(newApp(entries, use24h))
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "journal:", err)

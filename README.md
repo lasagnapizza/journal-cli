@@ -4,8 +4,9 @@ Interstitial journaling in the terminal. Open the app, the cursor is already
 blinking next to the current time. Write a line, press enter, it's logged.
 Page back for previous days. That's the whole app.
 
-A TUI port of [journal](../journal), minus the cloud: everything stays on the
-device, in one JSON file.
+A TUI port of [journal](../journal). Local-first: everything lives on the
+device in plain text files. Optionally, `journal login` connects to the same
+Supabase backend as the web app, so one account sees one timeline everywhere.
 
 ## Install
 
@@ -79,6 +80,35 @@ rename), so a crash never truncates a day, and an exclusive lock refuses a
 second running instance. An `entries.json` from an earlier build is migrated
 to day files on first load and parked as `entries.json.bak`.
 
+## Sync (optional)
+
+The CLI can share the web app's Supabase backend — same table, same merge
+rules, so the web app, the phone, and the terminal all see the same entries.
+Without ever running `journal login`, nothing here exists: no network, no
+credentials, pure local.
+
+```bash
+journal login    # asks for the Supabase URL + anon key (the web app's
+                 # VITE_SUPABASE_* values), then your email; paste the 6-digit
+                 # code or the whole magic link from the email
+journal sync     # manual reconcile, prints a summary
+journal logout   # forgets the session; local entries stay
+```
+
+`JOURNAL_SUPABASE_URL` / `JOURNAL_SUPABASE_ANON_KEY` env vars skip the first
+two prompts. The anon key is the same public value the web app ships to every
+browser — row-level security is the boundary, not the key.
+
+How it works: entries sync to the `journal_entries` table keyed by the same
+client-generated epoch-ms id the web app uses. The TUI pulls once at startup
+and pushes each log/edit/delete as it happens; failed pushes queue in
+`syncstate.json` and flush on the next run. Deletes are soft (`deleted_at`)
+with local tombstones, so a pull never resurrects an entry deleted elsewhere.
+Day files keep minute resolution, so after a restart entries re-match their
+cloud rows by (minute, text) — which also means editing the day files in
+`$EDITOR` syncs like any other edit. The refresh token lives in
+`session.json` (0600) in the data dir.
+
 ## Stack
 
 Go + Bubble Tea v2 + Bubbles v2 + Lip Gloss v2 (the `charm.land` module
@@ -92,6 +122,9 @@ paths). Flat files, one per feature:
   same-minute entries get bumped a millisecond apart on load, in file order
 - `daytime.go` — clock formatting, day bucketing, day labels, gap math,
   export text shapes (pure)
+- `sync.go` — optional Supabase sync: session, magic-link login, PostgREST
+  push/pull, and the pure three-way merge (`mergeSync`) that reconciles day
+  files ⟷ last-sync state ⟷ cloud
 
 Rules: shared time helpers go in `daytime.go`, persistence in `store.go`; no
 new folders; a new feature = one new top-level file.
