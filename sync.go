@@ -37,6 +37,15 @@ import (
 	"time"
 )
 
+// Baked in at release time via ldflags so a downloaded binary signs in to
+// the hosted backend with no setup. The anon key is the same public value
+// the web app ships to every browser — RLS is the boundary, not the key.
+// Empty in a plain `go build`; login then falls back to env vars or prompts.
+var (
+	defaultSupabaseURL     string
+	defaultSupabaseAnonKey string
+)
+
 const (
 	syncTable   = "journal_entries"
 	tombTTLMs   = 90 * 24 * 60 * 60 * 1000
@@ -639,6 +648,13 @@ func readLine(label string) (string, error) {
 func cmdLogin(use24h bool) error {
 	if _, err := loadSession(); err != nil {
 		return err
+	}
+	// precedence: env (self-hosters) > previous session > release default
+	if sy.sess.URL == "" {
+		sy.sess.URL = defaultSupabaseURL
+	}
+	if sy.sess.AnonKey == "" {
+		sy.sess.AnonKey = defaultSupabaseAnonKey
 	}
 	if v := os.Getenv("JOURNAL_SUPABASE_URL"); v != "" {
 		sy.sess.URL = v

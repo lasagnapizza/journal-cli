@@ -20,7 +20,10 @@ builds:
       - goos: windows
         goarch: arm64
     ldflags:
-      - -s -w -X main.version={{ .Version }}
+      # SUPABASE_* bake the hosted backend into release binaries so `journal
+      # login` needs no setup; absent (e.g. a fork without the secrets) the
+      # build still works and login prompts instead.
+      - -s -w -X main.version={{ .Version }} -X main.defaultSupabaseURL={{ envOrDefault "SUPABASE_URL" "" }} -X main.defaultSupabaseAnonKey={{ envOrDefault "SUPABASE_ANON_KEY" "" }}
 
 archives:
   - formats: [tar.gz]

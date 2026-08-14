@@ -95,9 +95,12 @@ journal sync     # manual reconcile, prints a summary
 journal logout   # forgets the session; local entries stay
 ```
 
-`JOURNAL_SUPABASE_URL` / `JOURNAL_SUPABASE_ANON_KEY` env vars skip the first
-two prompts. The anon key is the same public value the web app ships to every
-browser — row-level security is the boundary, not the key.
+Release binaries have the hosted backend baked in, so `login` goes straight
+to the email prompt. Self-hosting your own Supabase? Set
+`JOURNAL_SUPABASE_URL` / `JOURNAL_SUPABASE_ANON_KEY`, or just answer the
+prompts a plain `go build` binary shows. The anon key is the same public
+value the web app ships to every browser — row-level security is the
+boundary, not the key.
 
 How it works: entries sync to the `journal_entries` table keyed by the same
 client-generated epoch-ms id the web app uses. The TUI pulls once at startup
