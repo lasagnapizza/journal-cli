@@ -1,4 +1,4 @@
-module github.com/kinduff/journal-cli
+module github.com/lasagnapizza/journal-cli
 
 go 1.26.5
 

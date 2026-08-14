@@ -7,6 +7,52 @@ Page back for previous days. That's the whole app.
 A TUI port of [journal](../journal), minus the cloud: everything stays on the
 device, in one JSON file.
 
+## Install
+
+**Homebrew (macOS / Linux):**
+
+```sh
+brew tap lasagnapizza/tap
+brew install journal-cli
+```
+
+**Arch Linux (AUR):**
+
+```sh
+yay -S journal-cli-bin
+```
+
+**Debian / Ubuntu (.deb):**
+
+```sh
+curl -LO https://github.com/lasagnapizza/journal-cli/releases/latest/download/journal-cli_linux_amd64.deb
+sudo dpkg -i journal-cli_linux_amd64.deb
+```
+
+**Fedora / RHEL (.rpm):**
+
+```sh
+sudo rpm -i https://github.com/lasagnapizza/journal-cli/releases/latest/download/journal-cli_linux_amd64.rpm
+```
+
+**Alpine (.apk):**
+
+```sh
+curl -LO https://github.com/lasagnapizza/journal-cli/releases/latest/download/journal-cli_linux_amd64.apk
+apk add --allow-untrusted journal-cli_linux_amd64.apk
+```
+
+**Go:**
+
+```sh
+go install github.com/lasagnapizza/journal-cli@latest
+```
+
+Prebuilt archives for macOS, Linux, and Windows are on the
+[releases page](https://github.com/lasagnapizza/journal-cli/releases). Packages
+install the binary as `journal` (`go install` names it `journal-cli` after
+the module).
+
 ## Run
 
 ```bash

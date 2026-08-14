@@ -1,0 +1,81 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - binary: journal
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+brews:
+  - name: journal-cli
+    repository:
+      owner: lasagnapizza
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/lasagnapizza/journal-cli"
+    description: "Interstitial journaling in the terminal"
+    license: "MIT"
+    test: |
+      system "#{bin}/journal --version"
+
+aurs:
+  - name: journal-cli-bin
+    homepage: "https://github.com/lasagnapizza/journal-cli"
+    description: "Interstitial journaling in the terminal"
+    maintainers:
+      - "kinduff <kinduff@protonmail.com>"
+    license: "MIT"
+    private_key: "{{ .Env.AUR_SSH_KEY }}"
+    git_url: "ssh://aur@aur.archlinux.org/journal-cli-bin.git"
+    skip_upload: auto
+    package: |-
+      install -Dm755 journal "${pkgdir}/usr/bin/journal"
+
+nfpms:
+  - package_name: journal-cli
+    homepage: "https://github.com/lasagnapizza/journal-cli"
+    description: "Interstitial journaling in the terminal"
+    maintainer: "kinduff <kinduff@protonmail.com>"
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+    contents:
+      - src: ./LICENSE
+        dst: /usr/share/doc/journal-cli/LICENSE

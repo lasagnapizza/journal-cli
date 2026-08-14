@@ -18,7 +18,7 @@ import (
 
 const (
 	composerMaxLines = 5
-	// header + rule above the timeline, rule below it, help line
+	// header, blank line, the composer clock, help line
 	chromeLines = 4
 )
 
@@ -26,8 +26,9 @@ var (
 	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
 	faintStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
 	labelStyle  = lipgloss.NewStyle().Bold(true)
-	clockStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("109"))
 	timeStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
+	entryStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	clockStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
 	selStyle    = lipgloss.NewStyle().Reverse(true)
 	warnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("179"))
 	statusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("108"))
@@ -70,7 +71,8 @@ type appModel struct {
 
 func newApp(entries []Entry, use24h bool) appModel {
 	ta := textarea.New()
-	ta.Placeholder = "what are you doing?"
+	ta.Placeholder = "What just happened? What's next?"
+	ta.Prompt = " " // the clock renders on its own line above, like the web ui
 	ta.ShowLineNumbers = false
 	ta.CharLimit = 0
 	// the textarea sizes itself to its wrapped content — hard newlines and
@@ -81,9 +83,10 @@ func newApp(entries []Entry, use24h bool) appModel {
 	ta.SetHeight(1)
 	s := textarea.DefaultStyles(true)
 	s.Focused.CursorLine = lipgloss.NewStyle()
-	s.Focused.Prompt = clockStyle
-	s.Blurred.Prompt = clockStyle
 	ta.SetStyles(s)
+	// real terminal cursor, positioned by View — the virtual one is a styled
+	// cell that neither blinks nor matches the terminal's cursor shape
+	ta.SetVirtualCursor(false)
 	ta.Focus()
 
 	m := appModel{
@@ -94,7 +97,6 @@ func newApp(entries []Entry, use24h bool) appModel {
 		use24h:  use24h,
 		sel:     -1,
 	}
-	m.setPromptClock()
 	m.rebuildPages(true)
 	return m
 }
@@ -171,7 +173,9 @@ func (m *appModel) timelineLines() ([]string, []int) {
 	for i, e := range d.Entries {
 		if i > 0 {
 			if g := gapLabel(time.Duration(e.At-d.Entries[i-1].At) * time.Millisecond); g != "" {
-				lines = append(lines, faintStyle.Render(strings.Repeat(" ", tsWidth+2)+"· "+g+" ·"))
+				lines = append(lines, "", m.gapDivider(g), "")
+			} else {
+				lines = append(lines, "")
 			}
 		}
 		starts[i] = len(lines)
@@ -182,13 +186,26 @@ func (m *appModel) timelineLines() ([]string, []int) {
 		}
 		for j, l := range strings.Split(body, "\n") {
 			if j == 0 {
-				lines = append(lines, "  "+ts+"  "+l)
+				lines = append(lines, "  "+ts+"  "+entryStyle.Render(l))
 			} else {
-				lines = append(lines, strings.Repeat(" ", tsWidth+4)+l)
+				lines = append(lines, strings.Repeat(" ", tsWidth+4)+entryStyle.Render(l))
 			}
 		}
 	}
 	return lines, starts
+}
+
+// gapDivider: a full-width hairline with the gap's duration centered in it,
+// the web ui's "where did the time go" marker.
+func (m *appModel) gapDivider(label string) string {
+	inner := " " + label + " "
+	side := (m.width - lipgloss.Width(inner)) / 2
+	if side < 1 {
+		return dimStyle.Render(label)
+	}
+	rule := faintStyle.Render(strings.Repeat("─", side))
+	right := faintStyle.Render(strings.Repeat("─", m.width-side-lipgloss.Width(inner)))
+	return rule + dimStyle.Render(inner) + right
 }
 
 // refreshTimeline re-renders the day into the viewport; pin parks it on the
@@ -213,21 +230,15 @@ func (m *appModel) scrollTo(line int) {
 
 // ---- composer -----------------------------------------------------------
 
-// setPromptClock: the composer's prompt is the live clock — or, mid-edit, the
-// edited entry's own frozen time, so the prompt says which moment the text
+// composerClock: the line above the input is the live clock — or, mid-edit,
+// the edited entry's own frozen time, so it says which moment the text
 // belongs to.
-func (m *appModel) setPromptClock() {
+func (m appModel) composerClock() string {
 	at := m.now
 	if m.editing {
 		at = m.editingAt
 	}
-	clock := fmtTime(at, m.use24h)
-	m.ta.SetPromptFunc(len(clock)+2, func(p textarea.PromptInfo) string {
-		if p.LineNumber == 0 {
-			return clock + "  "
-		}
-		return strings.Repeat(" ", len(clock)+2)
-	})
+	return clockStyle.Render(fmtTime(at, m.use24h))
 }
 
 func (m *appModel) layout() {
@@ -268,7 +279,6 @@ func (m *appModel) startEdit() {
 	m.editingAt = e.At
 	m.ta.SetValue(e.Text)
 	m.sel = -1
-	m.setPromptClock()
 	m.layout()
 	m.refreshTimeline(false)
 }
@@ -291,7 +301,6 @@ func (m *appModel) finishEdit(save bool) {
 	m.editingAt = 0
 	m.ta.SetValue(m.stashDraft)
 	m.stashDraft = ""
-	m.setPromptClock()
 	m.layout()
 	// editing never changes which day an entry lives in, so stay on the page
 	// and keep the scroll where it was
@@ -376,7 +385,6 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		prevDay := dayKey(m.now)
 		m.now = time.Time(msg).UnixMilli()
-		m.setPromptClock()
 		if dayKey(m.now) != prevDay {
 			// midnight rollover: today gets a fresh page. Keep the scroll —
 			// someone reading back at 23:59 must not be yanked to the bottom.
@@ -575,7 +583,7 @@ func (m appModel) View() tea.View {
 		return tea.NewView("")
 	}
 	d := m.shownDay()
-	label := labelStyle.Render(dayLabel(entryDayTs(d, m.now), m.now))
+	label := labelStyle.Render(strings.ToUpper(dayLabel(entryDayTs(d, m.now), m.now)))
 	left, right := dimStyle.Render("‹"), dimStyle.Render("›")
 	if m.pageIdx == 0 {
 		left = faintStyle.Render("‹")
@@ -589,13 +597,14 @@ func (m appModel) View() tea.View {
 	if pad > 0 {
 		head += strings.Repeat(" ", pad) + date
 	}
-	rule := faintStyle.Render(strings.Repeat("─", m.width))
 
+	// header / timeline / blank / big clock / input / help — the web ui's
+	// shape: entries above, the clock already waiting at the bottom
 	var b strings.Builder
 	b.WriteString(head + "\n")
-	b.WriteString(rule + "\n")
 	b.WriteString(m.vp.View() + "\n")
-	b.WriteString(rule + "\n")
+	b.WriteString("\n")
+	b.WriteString(" " + m.composerClock() + "\n")
 	b.WriteString(m.ta.View() + "\n")
 	b.WriteString(" " + m.helpLine())
 
@@ -603,7 +612,7 @@ func (m appModel) View() tea.View {
 	v.AltScreen = true
 	v.WindowTitle = "journal"
 	if c := m.ta.Cursor(); c != nil && !m.exporting && !m.confirming && m.sel < 0 {
-		c.Position.Y += 2 + m.vp.Height() + 1
+		c.Position.Y += 1 + m.vp.Height() + 2
 		v.Cursor = c
 	}
 	return v
@@ -618,11 +627,27 @@ func entryDayTs(d day, now int64) int64 {
 	return now
 }
 
+// version is stamped by goreleaser at release time.
+var version = "dev"
+
 func main() {
 	use24h := os.Getenv("JOURNAL_24H") == "1"
 	for _, a := range os.Args[1:] {
-		if a == "-24h" || a == "--24h" {
+		switch a {
+		case "-24h", "--24h":
 			use24h = true
+		case "-v", "--version":
+			fmt.Println("journal", version)
+			return
+		case "-h", "--help":
+			fmt.Println("journal — interstitial journaling in the terminal")
+			fmt.Println()
+			fmt.Println("usage: journal [-24h]")
+			fmt.Println()
+			fmt.Println("  -24h           24-hour clock (or JOURNAL_24H=1)")
+			fmt.Println("  -v, --version  print version")
+			fmt.Println("  -h, --help     this help")
+			return
 		}
 	}
 	if err := lockStore(); err != nil {
